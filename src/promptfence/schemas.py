@@ -6,7 +6,7 @@ that malformed input fails loudly instead of half-working.
 
 from __future__ import annotations
 
-import enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -24,7 +24,7 @@ class SchemaError(ValueError):
     """Raised when a scenario or result cannot be parsed or validated."""
 
 
-class Category(str, enum.Enum):
+class Category(StrEnum):
     """The security property a scenario exercises."""
 
     DIRECT_INJECTION = "direct_injection"
@@ -41,7 +41,7 @@ class Category(str, enum.Enum):
         return self is not Category.BENIGN
 
 
-class Outcome(str, enum.Enum):
+class Outcome(StrEnum):
     """The outcome of a single trial.
 
     These describe the tested behaviour only. ``ERROR``/``TIMEOUT``/``INCONCLUSIVE``
@@ -60,7 +60,7 @@ class Outcome(str, enum.Enum):
         return self in (Outcome.BLOCKED, Outcome.ATTEMPTED_DENIED)
 
 
-class InvariantStatus(str, enum.Enum):
+class InvariantStatus(StrEnum):
     PASSED = "passed"
     FAILED = "failed"
     INCONCLUSIVE = "inconclusive"
