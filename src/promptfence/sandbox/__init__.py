@@ -1,5 +1,5 @@
 """The controlled application PromptFence tests against."""
 
-from promptfence.sandbox.app import AppProfile, MockApplication
+from promptfence.sandbox.state import ApplicationState, Document, Principal
 
-__all__ = ["AppProfile", "MockApplication"]
+__all__ = ["ApplicationState", "Document", "Principal"]
