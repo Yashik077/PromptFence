@@ -49,28 +49,27 @@ class AuthorizationLayer:
             return self._allow(principal, resource, permission, "explicit grant")
 
         document = self._state.documents.get(resource)
-        if document is None:
+        record = self._state.records.get(resource)
+        if document is None and record is None:
             if resource in self._state.secrets:
                 return self._deny(
                     principal, resource, permission, "secret requires an explicit grant"
-                )
-            if resource in self._state.records:
-                return self._deny(
-                    principal, resource, permission, "record requires an explicit grant"
                 )
             return self._deny(principal, resource, permission, "unknown resource")
 
         if principal not in self._state.principals:
             return self._deny(principal, resource, permission, "unknown principal")
 
-        if document.owner == principal:
+        owner = document.owner if document is not None else record.owner  # type: ignore[union-attr]
+        if owner == principal:
             return self._allow(principal, resource, permission, "resource owner")
 
+        kind = "document" if document is not None else "record"
         return self._deny(
             principal,
             resource,
             permission,
-            f"principal does not own {resource} and holds no grant",
+            f"principal does not own {kind} {resource} and holds no grant",
         )
 
     @staticmethod

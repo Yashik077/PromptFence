@@ -170,7 +170,7 @@ def read_record(ctx: ToolContext, arguments: dict[str, Any]) -> ToolResult:
     guard = _guard(ctx, record_id, "read", arguments)
     if isinstance(guard, ToolResult):
         return guard
-    value = ctx.state.records[record_id]
+    value = ctx.state.records[record_id].value
     return ToolResult.allowed(guard, content=value, disclosed=[value])
 
 
@@ -180,7 +180,7 @@ def write_record(ctx: ToolContext, arguments: dict[str, Any]) -> ToolResult:
     guard = _guard(ctx, record_id, "write", arguments)
     if isinstance(guard, ToolResult):
         return guard
-    ctx.state.records[record_id] = value
+    ctx.state.records[record_id].value = value
     return ToolResult.allowed(guard, content="updated", changed_state=[f"records/{record_id}"])
 
 

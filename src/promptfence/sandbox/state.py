@@ -32,6 +32,15 @@ class Document:
     title: str = ""
 
 
+@dataclass(slots=True)
+class Record:
+    """A synthetic mutable application record owned by one principal."""
+
+    id: str
+    owner: str
+    value: str
+
+
 @dataclass
 class ApplicationState:
     """Mutable state owned by the application under test.
@@ -42,8 +51,8 @@ class ApplicationState:
 
     principals: dict[str, Principal] = field(default_factory=dict)
     documents: dict[str, Document] = field(default_factory=dict)
+    records: dict[str, Record] = field(default_factory=dict)
     secrets: dict[str, str] = field(default_factory=dict)
-    records: dict[str, str] = field(default_factory=dict)
     #: Explicit scenario-declared permissions: (principal, resource) -> permissions.
     grants: dict[tuple[str, str], set[Permission]] = field(default_factory=dict)
 
@@ -76,6 +85,9 @@ class ApplicationState:
 
     def add_document(self, document: Document) -> None:
         self.documents[document.id] = document
+
+    def add_record(self, record: Record) -> None:
+        self.records[record.id] = record
 
     def grant(self, principal: str, resource: str, permission: Permission = "read") -> None:
         self.grants.setdefault((principal, resource), set()).add(permission)

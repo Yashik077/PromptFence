@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from promptfence.sandbox.authorization import AuthorizationLayer
-from promptfence.sandbox.state import ApplicationState, Document
+from promptfence.sandbox.state import ApplicationState, Document, Record
 from promptfence.sandbox.tools import TOOLS, ToolContext, ToolResult, tool_schemas
 from promptfence.schemas import Event, Scenario
 
@@ -60,6 +60,10 @@ class MockApplication:
                 )
             )
         state.secrets.update(scenario.setup.secrets)
+        for record in scenario.setup.records:
+            if record.owner not in state.principals:
+                state.add_principal(record.owner)
+            state.add_record(Record(id=record.id, owner=record.owner, value=record.value))
         for grant in scenario.setup.grants:
             state.grant(grant.principal, grant.document, grant.permission)  # type: ignore[arg-type]
         return state

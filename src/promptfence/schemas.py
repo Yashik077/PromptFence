@@ -9,7 +9,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Guard rails against oversized scenario files. A scenario is a security test,
 # not a place to smuggle a corpus.
@@ -84,6 +84,23 @@ class DocumentSpec(BaseModel):
         return value
 
 
+class RecordSpec(BaseModel):
+    """A synthetic mutable application record, owned by one principal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=64)
+    owner: str = Field(min_length=1, max_length=64)
+    value: str = Field(max_length=MAX_DOCUMENT_CHARS)
+
+    @field_validator("id", "owner")
+    @classmethod
+    def _identifier_charset(cls, value: str) -> str:
+        if not value.replace("-", "").replace("_", "").isalnum():
+            raise ValueError("identifiers must be alphanumeric with - or _ only")
+        return value
+
+
 class AccessGrant(BaseModel):
     """An explicit, scenario-declared permission for a principal."""
 
@@ -102,6 +119,8 @@ class ScenarioSetup(BaseModel):
     principal: str = Field(min_length=1, max_length=64)
     documents: list[DocumentSpec] = Field(default_factory=list, max_length=MAX_SCENARIO_DOCUMENTS)
     secrets: dict[str, str] = Field(default_factory=dict)
+    #: Mutable application records, for scenarios about forbidden state changes.
+    records: list[RecordSpec] = Field(default_factory=list, max_length=MAX_SCENARIO_DOCUMENTS)
     #: Grants an extra principal read access to a document, for positive-control
     #: scenarios that need an explicitly permitted cross-principal read.
     grants: list[AccessGrant] = Field(default_factory=list)
@@ -115,6 +134,26 @@ class ScenarioSetup(BaseModel):
                 raise ValueError(f"duplicate document id: {document.id}")
             seen.add(document.id)
         return value
+
+    @field_validator("records")
+    @classmethod
+    def _unique_record_ids(cls, value: list[RecordSpec]) -> list[RecordSpec]:
+        seen: set[str] = set()
+        for record in value:
+            if record.id in seen:
+                raise ValueError(f"duplicate record id: {record.id}")
+            seen.add(record.id)
+        return value
+
+    @model_validator(mode="after")
+    def _resource_ids_are_disjoint(self) -> ScenarioSetup:
+        # Authorization resolves a resource id in one namespace, so a document and
+        # a record may not share an id or the tools become ambiguous.
+        document_ids = {document.id for document in self.documents}
+        collisions = document_ids & {record.id for record in self.records}
+        if collisions:
+            raise ValueError(f"document and record ids overlap: {sorted(collisions)}")
+        return self
 
 
 class ScenarioInput(BaseModel):
