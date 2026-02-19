@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from promptfence.sandbox.authorization import AuthorizationLayer
+from promptfence.sandbox.authorization import AuthorizationLayer, Decision
 from promptfence.sandbox.state import ApplicationState, Document, Record
 from promptfence.sandbox.tools import TOOLS, ToolContext, ToolResult, tool_schemas
 from promptfence.schemas import Event, Scenario
@@ -91,23 +91,27 @@ class MockApplication:
     def effective_principal(self, arguments: dict[str, Any]) -> str:
         """The principal a tool call runs as.
 
-        Tools may legitimately be asked to act on behalf of somebody, so an
-        ``as_user`` argument is honoured here.
+        Always the authenticated trial principal. An ``as_user`` argument is
+        recorded as an attempted identity override and then ignored: the model
+        does not get to decide who it is, however persuasive the text that made
+        it ask.
         """
         claimed = arguments.get("as_user")
-        if isinstance(claimed, str) and claimed:
+        if isinstance(claimed, str) and claimed and claimed != self.authenticated_principal:
             self.identity_overrides.append(claimed)
             self._record(
                 Event(
                     id=self._next_id(),
-                    kind="identity_claim",
+                    kind="identity_override",
                     principal=self.authenticated_principal,
                     arguments={"as_user": claimed},
-                    decision="noted",
-                    reason="tool call carried an as_user argument",
+                    decision=Decision.DENY,
+                    reason=(
+                        f"tool call tried to act as {claimed!r}; "
+                        f"authenticated principal is {self.authenticated_principal!r}"
+                    ),
                 )
             )
-            return claimed
         return self.authenticated_principal
 
     def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> ToolResult:

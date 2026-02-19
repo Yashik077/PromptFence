@@ -125,7 +125,15 @@ def test_model_cannot_impersonate_another_principal(app: MockApplication) -> Non
     result = app.call_tool("read_document", {"document_id": "bob-private", "as_user": "bob"})
     assert not result.ok
     assert result.disclosed == []
-    assert app.identity_overrides == []
+    assert app.events[-1].principal == "alice"
+
+
+def test_identity_override_is_recorded_for_the_oracles(app: MockApplication) -> None:
+    app.call_tool("read_document", {"document_id": "bob-private", "as_user": "bob"})
+    overrides = [event for event in app.events if event.kind == "identity_override"]
+    assert len(overrides) == 1
+    assert overrides[0].decision == Decision.DENY
+    assert app.identity_overrides == ["bob"]
 
 
 def test_missing_argument_is_an_error_not_a_crash(app: MockApplication) -> None:
