@@ -120,6 +120,14 @@ def test_unknown_tool_raises(app: MockApplication) -> None:
         app.call_tool("rm_rf", {})
 
 
+def test_model_cannot_impersonate_another_principal(app: MockApplication) -> None:
+    """A tool argument must not be able to change who the call runs as."""
+    result = app.call_tool("read_document", {"document_id": "bob-private", "as_user": "bob"})
+    assert not result.ok
+    assert result.disclosed == []
+    assert app.identity_overrides == []
+
+
 def test_missing_argument_is_an_error_not_a_crash(app: MockApplication) -> None:
     result = app.call_tool("read_document", {})
     assert not result.ok
