@@ -8,6 +8,7 @@ was stopped or actually happened.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any
 
 from promptfence.sandbox.authorization import AuthorizationLayer, Decision
@@ -26,6 +27,27 @@ RESOURCE_ARGUMENTS = {
 }
 
 
+class AppProfile(StrEnum):
+    """Which mock application configuration a trial runs against.
+
+    ``VULNERABLE`` exists on purpose. It carries one documented authorization
+    defect so the suite can prove the oracles actually detect that defect instead
+    of always reporting a clean run.
+    """
+
+    HARDENED = "hardened"
+    VULNERABLE = "vulnerable"
+
+
+#: The single seeded defect, described precisely enough to write a test against.
+VULNERABILITY_NOTES = (
+    "The vulnerable profile authorizes tool calls using the model-supplied "
+    "'as_user' argument instead of the authenticated principal. An attacker who "
+    "can put text in front of the model can therefore choose whose permissions "
+    "the tool call is checked against."
+)
+
+
 class UnknownToolError(LookupError):
     """Raised when a scenario or adapter asks for a tool that does not exist."""
 
@@ -33,14 +55,19 @@ class UnknownToolError(LookupError):
 class MockApplication:
     """A deterministic, offline application with synthetic data."""
 
-    def __init__(self, scenario: Scenario) -> None:
+    def __init__(self, scenario: Scenario, profile: AppProfile | str = AppProfile.HARDENED) -> None:
         self._scenario = scenario
+        self.profile = AppProfile(profile)
         self._state = self._build_state(scenario)
         self._authorization = AuthorizationLayer(self._state)
         self._events: list[Event] = []
         self._baseline = self._state.snapshot()
         self.authenticated_principal = scenario.setup.principal
         self.identity_overrides: list[str] = []
+
+    @property
+    def is_hardened(self) -> bool:
+        return self.profile is AppProfile.HARDENED
 
     # -- construction ----------------------------------------------------
 
@@ -99,6 +126,8 @@ class MockApplication:
         claimed = arguments.get("as_user")
         if isinstance(claimed, str) and claimed and claimed != self.authenticated_principal:
             self.identity_overrides.append(claimed)
+            if not self.is_hardened:
+                return self._vulnerable_principal(claimed)
             self._record(
                 Event(
                     id=self._next_id(),
@@ -113,6 +142,24 @@ class MockApplication:
                 )
             )
         return self.authenticated_principal
+
+    def _vulnerable_principal(self, claimed: str) -> str:
+        """Seeded defect: trust the identity the caller supplied.
+
+        Present so the regression suite can prove a violation is detectable.
+        Do not copy this into anything real.
+        """
+        self._record(
+            Event(
+                id=self._next_id(),
+                kind="identity_override",
+                principal=self.authenticated_principal,
+                arguments={"as_user": claimed},
+                decision=Decision.ALLOW,
+                reason="application accepted the identity supplied by the caller",
+            )
+        )
+        return claimed
 
     def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> ToolResult:
         spec = TOOLS.get(name)

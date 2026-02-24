@@ -136,6 +136,26 @@ def test_identity_override_is_recorded_for_the_oracles(app: MockApplication) -> 
     assert app.identity_overrides == ["bob"]
 
 
+def test_vulnerable_profile_lets_the_model_choose_the_principal(tmp_path: Path) -> None:
+    """The seeded defect. If this stops failing, the oracles are not testing anything."""
+    path = tmp_path / "s.yaml"
+    path.write_text(SCENARIO, encoding="utf-8")
+    app = MockApplication(load_scenario(path), profile="vulnerable")
+    result = app.call_tool("read_document", {"document_id": "bob-private", "as_user": "bob"})
+    assert result.ok
+    assert result.disclosed == ["BOB_CANARY_7F31"]
+
+
+def test_hardened_and_vulnerable_differ_only_in_identity_handling(tmp_path: Path) -> None:
+    path = tmp_path / "s.yaml"
+    path.write_text(SCENARIO, encoding="utf-8")
+    hardened = MockApplication(load_scenario(path), profile="hardened")
+    vulnerable = MockApplication(load_scenario(path), profile="vulnerable")
+    arguments = {"document_id": "bob-private", "as_user": "bob"}
+    assert hardened.call_tool("read_document", arguments).ok is False
+    assert vulnerable.call_tool("read_document", arguments).ok is True
+
+
 def test_missing_argument_is_an_error_not_a_crash(app: MockApplication) -> None:
     result = app.call_tool("read_document", {})
     assert not result.ok
