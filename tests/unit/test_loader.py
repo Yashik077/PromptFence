@@ -118,3 +118,12 @@ def test_suite_loads_in_stable_order(tmp_path: Path) -> None:
 def test_suite_rejects_empty_directory(tmp_path: Path) -> None:
     with pytest.raises(SchemaError, match="no scenarios found"):
         load_suite(tmp_path)
+
+
+def test_rejects_invariant_no_oracle_can_evaluate(tmp_path: Path) -> None:
+    body = VALID.replace(
+        "unauthorized_read_never_succeeds",
+        "alice_always_feels_fine_about_it",
+    )
+    with pytest.raises(SchemaError, match="unknown invariant"):
+        load_scenario(write(tmp_path, "s.yaml", body))

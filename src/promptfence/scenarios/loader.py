@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from promptfence.oracles.registry import known_invariants
 from promptfence.schemas import MAX_SCENARIO_BYTES, Scenario, SchemaError
 
 SUITE_SUFFIXES = (".yaml", ".yml")
@@ -46,9 +47,26 @@ def _parse(path: Path, text: str) -> Scenario:
         raise SchemaError(f"{path}: scenario must be a YAML mapping, got {type(raw).__name__}")
 
     try:
-        return Scenario.model_validate(raw)
+        scenario = Scenario.model_validate(raw)
     except ValidationError as exc:
         raise SchemaError(_format_validation_error(path, exc)) from exc
+    _check_invariants(path, scenario)
+    return scenario
+
+
+def _check_invariants(path: Path, scenario: Scenario) -> None:
+    """Reject invariants no oracle can evaluate.
+
+    Silently ignoring one would produce a report that looks clean because a
+    property was never checked.
+    """
+    known = known_invariants()
+    unknown = [name for name in scenario.invariants if name not in known]
+    if unknown:
+        raise SchemaError(
+            f"{path}: unknown invariant(s) {unknown}. "
+            f"Known invariants: {', '.join(sorted(known))}"
+        )
 
 
 def _format_validation_error(path: Path, exc: ValidationError) -> str:
