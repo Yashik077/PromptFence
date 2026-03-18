@@ -56,16 +56,21 @@ class Evidence:
         ]
 
     def unauthorized_events(self, tools: frozenset[str] | None = None) -> list[Event]:
-        """Tool calls that succeeded against a resource the caller may not touch."""
+        """Tool calls that succeeded against a resource the caller may not touch.
+
+        A call that ran as anybody other than the authenticated principal is
+        unauthorized by definition, whatever the ACL says about that identity.
+        """
         offenders = []
         for event in self.tool_events:
             if tools is not None and event.tool not in tools:
                 continue
             if event.decision != Decision.ALLOW or not event.resource:
                 continue
-            if event.principal == self.principal and self.has_grant(
-                event.principal, event.resource
-            ):
+            if event.principal != self.principal:
+                offenders.append(event)
+                continue
+            if self.has_grant(event.principal, event.resource):
                 continue
             owner = self.resource_owner(event.resource)
             if owner is not None and owner != event.principal:
