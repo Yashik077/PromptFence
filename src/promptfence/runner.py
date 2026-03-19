@@ -9,11 +9,10 @@ answers "we could not tell" and "the run broke".
 
 from __future__ import annotations
 
+import threading
 import time
 import uuid
-from collections.abc import Iterable, Sequence
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FutureTimeout
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -59,6 +58,9 @@ class RunConfig:
 
     adapter_name: str = "mock"
     adapter_options: dict[str, Any] = field(default_factory=dict)
+    #: Escape hatch for embedding PromptFence in another harness: build the
+    #: adapter yourself instead of going through the name registry.
+    adapter_factory: Callable[[], Any] | None = None
     app_profile: str | None = None
     max_tool_rounds: int = DEFAULT_MAX_TOOL_ROUNDS
     timeout_seconds: float = 30.0
@@ -90,7 +92,10 @@ class Runner:
         profile = self.config.app_profile or scenario.input.app_profile
 
         try:
-            adapter = create_adapter(self.config.adapter_name, **self.config.adapter_options)
+            if self.config.adapter_factory is not None:
+                adapter = self.config.adapter_factory()
+            else:
+                adapter = create_adapter(self.config.adapter_name, **self.config.adapter_options)
         except ValueError as exc:
             return self._failed_result(scenario, run_id, trial_id, profile, str(exc), started)
 
@@ -104,8 +109,12 @@ class Runner:
             output, retries = self._converse(adapter, app, scenario)
         except TrialTimeout as exc:
             outcome_kind, error = Outcome.TIMEOUT, str(exc)
+        except AdapterTimeout as exc:
+            outcome_kind, error = Outcome.TIMEOUT, str(exc)
         except AdapterError as exc:
-            outcome_kind, error = Outcome.ERROR, str(exc)
+            outcome_kind = Outcome.ERROR
+            error = _with_retries(str(exc), getattr(exc, "retries", 0))
+            retries = getattr(exc, "retries", 0)
         except Exception as exc:  # noqa: BLE001 - a crash is evidence too
             outcome_kind, error = Outcome.ERROR, f"{type(exc).__name__}: {exc}"
 
@@ -135,8 +144,8 @@ class Runner:
             duration_ms=int((time.perf_counter() - started) * 1000),
             runner_version=self.config.runner_version,
         )
-        if retries:
-            result.error = _with_retries(result.error, retries)
+        if retries and error and "(adapter retr" not in error:
+            result.error = _with_retries(error, retries)
         return result
 
     def run_suite(
@@ -193,22 +202,40 @@ class Runner:
                 return self._call_once(adapter, request), 0
             except AdapterTimeout:
                 raise
-            except AdapterError:
+            except AdapterError as exc:
                 if attempt >= self.config.max_retries:
+                    exc.retries = attempt
                     raise
                 attempt += 1
                 time.sleep(self.config.retry_backoff_seconds * attempt)
 
     def _call_once(self, adapter: Any, request: ModelRequest) -> ModelResponse:
-        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="pf-adapter") as pool:
-            future = pool.submit(adapter.complete, request)
+        """Run one adapter call on a daemon thread under a hard deadline.
+
+        A ThreadPoolExecutor would look tidier, but its ``__exit__`` waits for
+        the worker, so a hung provider would burn the whole timeout and then
+        some. Here the worker is left running and abandoned.
+        """
+        outcome: dict[str, Any] = {}
+        finished = threading.Event()
+
+        def invoke() -> None:
             try:
-                return future.result(timeout=self.config.timeout_seconds)
-            except FutureTimeout as exc:
-                future.cancel()
-                raise AdapterTimeout(
-                    f"adapter {self.config.adapter_name!r} exceeded {self.config.timeout_seconds}s"
-                ) from exc
+                outcome["response"] = adapter.complete(request)
+            except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread
+                outcome["error"] = exc
+            finally:
+                finished.set()
+
+        worker = threading.Thread(target=invoke, name="pf-adapter", daemon=True)
+        worker.start()
+        if not finished.wait(self.config.timeout_seconds):
+            raise AdapterTimeout(
+                f"adapter {self.config.adapter_name!r} exceeded {self.config.timeout_seconds}s"
+            )
+        if "error" in outcome:
+            raise outcome["error"]
+        return outcome["response"]
 
     def _invoke(
         self, app: MockApplication, call_id: str, name: str, arguments: dict[str, Any]
@@ -319,5 +346,7 @@ def _summarise(invariants: Sequence[InvariantResult], events: list[Event]) -> Ou
 
 
 def _with_retries(error: str | None, retries: int) -> str:
-    suffix = f"({retries} adapter retr{'y' if retries == 1 else 'ies'} before this)"
-    return f"{error} {suffix}" if error else suffix
+    if not retries:
+        return error or ""
+    suffix = f"{retries} adapter retr{'y' if retries == 1 else 'ies'} before this"
+    return f"{error} ({suffix})" if error else suffix

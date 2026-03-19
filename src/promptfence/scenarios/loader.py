@@ -64,8 +64,7 @@ def _check_invariants(path: Path, scenario: Scenario) -> None:
     unknown = [name for name in scenario.invariants if name not in known]
     if unknown:
         raise SchemaError(
-            f"{path}: unknown invariant(s) {unknown}. "
-            f"Known invariants: {', '.join(sorted(known))}"
+            f"{path}: unknown invariant(s) {unknown}. Known invariants: {', '.join(sorted(known))}"
         )
 
 
