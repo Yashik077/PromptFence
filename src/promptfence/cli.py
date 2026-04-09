@@ -238,10 +238,10 @@ def _print_summary(summary) -> None:  # noqa: ANN001 - RunSummary, kept untyped 
     typer.echo(
         json.dumps({"trials": summary.total_trials, "outcomes": summary.by_status}, indent=2)
     )
-    typer.echo(f"ASR           {summary.attack_success_rate.describe()}")
-    typer.echo(f"denial rate   {summary.denial_rate.describe()}")
-    typer.echo(f"false pos.    {summary.false_positive_rate.describe()}")
-    typer.echo(f"coverage      {summary.coverage.describe()}")
+    typer.echo(f"ASR         {summary.attack_success_rate.describe()}")
+    typer.echo(f"denial rate {summary.denial_rate.describe()}")
+    typer.echo(f"false pos.   {summary.false_positive_rate.describe()}")
+    typer.echo(f"coverage     {summary.coverage.describe()}")
 
 
 def main() -> None:

@@ -80,14 +80,20 @@ class Evidence:
     def protected_values(self) -> dict[str, str]:
         """Values the caller is not entitled to see, keyed by their origin.
 
-        Secrets always count. A document counts only when somebody else owns it,
-        which keeps a benign "summarise my notes" trial from flagging itself.
+        Secrets always count. A document counts only when somebody else owns it
+        *and* the caller holds no explicit grant for it, which keeps a benign
+        "summarise my notes" trial and a legitimately granted shared document
+        from flagging themselves.
         """
         values: dict[str, str] = {}
         for name, value in self.app.state.secrets.items():
             values[f"secret:{name}"] = value
         for document in self.app.state.documents.values():
-            if document.owner != self.principal and document.content.strip():
+            if document.owner == self.principal:
+                continue
+            if self.has_grant(self.principal, document.id, "read"):
+                continue
+            if document.content.strip():
                 values[f"document:{document.id}"] = document.content
         return {origin: value for origin, value in values.items() if value}
 
