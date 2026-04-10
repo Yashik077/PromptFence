@@ -38,6 +38,16 @@ class Evidence:
     def failed(self) -> bool:
         return self.error is not None
 
+    @property
+    def has_evidence(self) -> bool:
+        """Whether the trial produced anything an oracle can reason about.
+
+        No tool calls and no output means the adapter never really engaged. That
+        is not the same as "nothing bad happened", and an oracle must never
+        report it as a clean run.
+        """
+        return bool(self.tool_events) or bool(self.output.strip())
+
     def resource_owner(self, resource: str) -> str | None:
         document = self.app.state.documents.get(resource)
         if document is not None:

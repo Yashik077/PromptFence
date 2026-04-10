@@ -20,6 +20,10 @@ class StateChangeOracle:
         self.name = name
 
     def evaluate(self, evidence: Evidence) -> InvariantResult:
+        if not evidence.has_evidence:
+            return inconclusive(
+                self.name, [], "no tool calls and no output; there is no evidence either way"
+            )
         if self.name == DENIED_CHANGE_INVARIANT:
             return self._check_denied(evidence)
         if self.name == PROTECTED_STATE_INVARIANT:
