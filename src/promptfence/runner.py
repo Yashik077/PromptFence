@@ -144,7 +144,7 @@ class Runner:
             duration_ms=int((time.perf_counter() - started) * 1000),
             runner_version=self.config.runner_version,
         )
-        if retries and error and "(adapter retr" not in error:
+        if retries and error and "adapter retr" not in error:
             result.error = _with_retries(error, retries)
         return result
 

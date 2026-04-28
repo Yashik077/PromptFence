@@ -24,7 +24,9 @@ from typing import Annotated
 import typer
 
 from promptfence import __version__
+from promptfence.adapters.openai_compatible import ADAPTER_NAME as REMOTE_ADAPTER
 from promptfence.adapters.registry import available_adapters
+from promptfence.config import ConfigError, RemoteModelConfig
 from promptfence.metrics import summarize
 from promptfence.reports.html import render_to_file
 from promptfence.reports.jsonl import read_jsonl, write_jsonl
@@ -38,6 +40,18 @@ EXIT_USAGE = 2
 EXIT_INFRASTRUCTURE = 3
 
 FAIL_ON_CHOICES = ("violation", "inconclusive", "error", "never")
+
+EndpointOption = Annotated[
+    str | None,
+    typer.Option(
+        "--endpoint",
+        help="Base URL of an OpenAI-compatible endpoint. Required for --model openai_compatible.",
+    ),
+]
+RemoteModelOption = Annotated[
+    str | None,
+    typer.Option("--remote-model", help="Model id to request from the endpoint."),
+]
 
 app = typer.Typer(
     name="promptfence",
@@ -92,10 +106,12 @@ def run(
     fail_on: Annotated[
         str, typer.Option(help="Which outcomes should exit non-zero.")
     ] = "violation",
+    endpoint: EndpointOption = None,
+    remote_model: RemoteModelOption = None,
     quiet: Annotated[bool, typer.Option("--quiet", "-q")] = False,
 ) -> None:
     """Run a single scenario."""
-    config = _config(model, app_profile, timeout, max_retries, fail_on)
+    config = _config(model, endpoint, remote_model, app_profile, timeout, max_retries, fail_on)
     try:
         loaded = load_scenario(scenario)
     except SchemaError as exc:
@@ -133,10 +149,12 @@ def run_suite(
     fail_on: Annotated[
         str, typer.Option(help="Which outcomes should exit non-zero.")
     ] = "violation",
+    endpoint: EndpointOption = None,
+    remote_model: RemoteModelOption = None,
     quiet: Annotated[bool, typer.Option("--quiet", "-q")] = False,
 ) -> None:
     """Run every scenario in a directory."""
-    config = _config(model, app_profile, timeout, max_retries, fail_on)
+    config = _config(model, endpoint, remote_model, app_profile, timeout, max_retries, fail_on)
     try:
         scenarios = load_suite(suite)
     except SchemaError as exc:
@@ -180,7 +198,13 @@ def report(
 
 
 def _config(
-    model: str, app_profile: str | None, timeout: float, max_retries: int, fail_on: str
+    model: str,
+    endpoint: str | None,
+    remote_model: str | None,
+    app_profile: str | None,
+    timeout: float,
+    max_retries: int,
+    fail_on: str,
 ) -> RunConfig:
     if fail_on not in FAIL_ON_CHOICES:
         typer.secho(
@@ -195,8 +219,26 @@ def _config(
             f"error: unknown adapter {model!r}; available: {known}", fg=typer.colors.RED, err=True
         )
         raise typer.Exit(EXIT_USAGE)
+
+    options: dict[str, object] = {}
+    if model == REMOTE_ADAPTER:
+        try:
+            remote = RemoteModelConfig.resolve(
+                base_url=endpoint, model=remote_model, timeout=timeout
+            )
+        except ConfigError as exc:
+            typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(EXIT_USAGE) from exc
+        options["config"] = remote
+        typer.secho(
+            f"note: prompts and scenario content will be sent to {remote.base_url}",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+
     return RunConfig(
         adapter_name=model,
+        adapter_options=options,
         app_profile=app_profile,
         timeout_seconds=timeout,
         max_retries=max_retries,
