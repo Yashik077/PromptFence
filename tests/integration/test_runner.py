@@ -222,6 +222,19 @@ def test_unknown_adapter_is_an_error(tmp_path: Path) -> None:
     assert "unknown adapter" in (result.error or "")
 
 
+def test_remote_adapter_configuration_is_recorded_without_the_key(tmp_path: Path) -> None:
+    from promptfence.adapters.openai_compatible import OpenAICompatibleAdapter
+    from promptfence.config import RemoteModelConfig
+
+    config = RemoteModelConfig(
+        base_url="http://model.invalid/v1", model="some-model", api_key="super-secret"
+    )
+    result = run(tmp_path, CROSS_USER, adapter_factory=lambda: OpenAICompatibleAdapter(config))
+    assert result.adapter_fingerprint is not None
+    assert "super-secret" not in result.adapter_fingerprint
+    assert "model.invalid" in result.adapter_fingerprint
+
+
 def test_max_tool_rounds_is_enforced(tmp_path: Path) -> None:
     result = run(tmp_path, CROSS_USER, adapter_factory=_EndlessAdapter, max_tool_rounds=2)
     assert result.status is Outcome.ERROR

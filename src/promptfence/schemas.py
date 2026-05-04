@@ -277,6 +277,9 @@ class TrialResult(BaseModel):
     tags: list[str] = Field(default_factory=list)
     adapter: str
     model: str
+    #: Identifies the adapter configuration without exposing a credential. For
+    #: remote adapters this is endpoint + model + a hash prefix of the key.
+    adapter_fingerprint: str | None = None
     app_profile: str
     status: Outcome
     invariants: list[InvariantResult] = Field(default_factory=list)

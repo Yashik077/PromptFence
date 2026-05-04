@@ -134,6 +134,7 @@ class Runner:
             tags=scenario.tags,
             adapter=self.config.adapter_name,
             model=getattr(adapter, "model", "unknown"),
+            adapter_fingerprint=_adapter_fingerprint(adapter),
             app_profile=str(profile),
             status=outcome_kind,
             invariants=invariant_results,
@@ -317,6 +318,19 @@ class Runner:
             duration_ms=int((time.perf_counter() - started) * 1000),
             runner_version=__version__,
         )
+
+
+def _adapter_fingerprint(adapter: Any) -> str | None:
+    """Identify the adapter configuration without leaking a credential.
+
+    Adapters that talk to a remote endpoint expose a config with a hashed
+    fingerprint; local adapters are already fully described by their name.
+    """
+    config = getattr(adapter, "config", None)
+    fingerprint = getattr(config, "fingerprint", None)
+    if callable(fingerprint):
+        return str(fingerprint())
+    return None
 
 
 def _assistant_tool_intent(response: ModelResponse) -> ModelMessage:
