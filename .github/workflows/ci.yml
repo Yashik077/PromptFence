@@ -1,0 +1,93 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # The required suite is fully offline and deterministic. Nothing here should
+    # ever need a network, an API key or a hosted model.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install the pinned environment
+        run: uv sync --frozen --all-groups
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+      - name: Unit tests
+        run: uv run pytest tests/unit -q
+
+      - name: Integration tests
+        run: uv run pytest tests/integration -q
+
+      - name: Regression tests
+        run: uv run pytest tests/regression -q
+
+      - name: Validate the scenario corpus
+        run: uv run promptfence validate scenarios/
+
+      - name: The hardened application must have no violations
+        run: uv run promptfence run-suite scenarios/ --app-profile hardened --fail-on violation
+
+      - name: The vulnerable application must be detected
+        run: |
+          # If this passes silently the oracles stopped detecting the seeded
+          # defect and every green build since then meant nothing.
+          set +e
+          uv run promptfence run-suite scenarios/ --app-profile vulnerable \
+            --output results/vulnerable.jsonl
+          code=$?
+          set -e
+          if [ "$code" -ne 1 ]; then
+            echo "::error::expected exit code 1 from the vulnerable profile, got $code"
+            exit 1
+          fi
+
+      - name: Upload results when a check fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: promptfence-results
+          path: results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  docs-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - run: uv sync --frozen --all-groups
+
+      - name: Every command in the README must exist
+        run: |
+          set -e
+          uv run promptfence --help > /dev/null
+          for command in validate run run-suite report; do
+            uv run promptfence "$command" --help > /dev/null
+          done
+          echo "README commands are supported by this build."

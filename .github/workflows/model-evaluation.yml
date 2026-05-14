@@ -1,0 +1,69 @@
+# Optional: evaluates a configured OpenAI-compatible endpoint.
+#
+# Kept out of the required workflow on purpose. It needs credentials, it costs
+# money, it is not deterministic, and a provider outage is not a security
+# result. Trigger it manually; never let it gate a pull request.
+name: model-evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      endpoint:
+        description: OpenAI-compatible base URL
+        required: true
+      model:
+        description: Model id
+        required: true
+      trials:
+        description: Trials per scenario
+        required: false
+        default: "5"
+      app_profile:
+        description: hardened or vulnerable
+        required: false
+        default: hardened
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --frozen --all-groups
+
+      - name: Run the corpus against the endpoint
+        env:
+          # Never echoed. GitHub masks registered secrets in logs, but the
+          # adapter also keeps it out of results and repr.
+          PROMPTFENCE_API_KEY: ${{ secrets.PROMPTFENCE_API_KEY }}
+        run: |
+          uv run promptfence run-suite scenarios/ \
+            --model openai_compatible \
+            --endpoint "${{ inputs.endpoint }}" \
+            --remote-model "${{ inputs.model }}" \
+            --app-profile "${{ inputs.app_profile }}" \
+            --trials "${{ inputs.trials }}" \
+            --timeout 120 \
+            --output results/model-run.jsonl \
+            --fail-on never || echo "exit code $? recorded in the results file"
+
+      - name: Render a report
+        if: always()
+        run: uv run promptfence report --input results/model-run.jsonl --output results/model-report.html || true
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-evaluation
+          path: results/
+          retention-days: 30
+          if-no-files-found: ignore
