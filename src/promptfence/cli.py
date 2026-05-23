@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
@@ -27,7 +28,7 @@ from promptfence import __version__
 from promptfence.adapters.openai_compatible import ADAPTER_NAME as REMOTE_ADAPTER
 from promptfence.adapters.registry import available_adapters
 from promptfence.config import ConfigError, RemoteModelConfig
-from promptfence.metrics import summarize
+from promptfence.metrics import RunSummary, summarize
 from promptfence.reports.html import render_to_file
 from promptfence.reports.jsonl import read_jsonl, write_jsonl
 from promptfence.runner import RunConfig, Runner, new_run_id
@@ -174,6 +175,49 @@ def run_suite(
 
 
 @app.command()
+def compare(
+    suite: Annotated[Path, typer.Argument(help="Directory of scenarios to execute.")],
+    model: Annotated[str, typer.Option("--model", "-m", help="Adapter to use.")] = "mock",
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write both runs here as JSONL.")
+    ] = None,
+    endpoint: EndpointOption = None,
+    remote_model: RemoteModelOption = None,
+    timeout: Annotated[float, typer.Option(help="Per-request timeout in seconds.")] = 30.0,
+    max_retries: Annotated[int, typer.Option(help="Retries for transport errors only.")] = 1,
+    quiet: Annotated[bool, typer.Option("--quiet", "-q")] = False,
+) -> None:
+    """Run the same suite against both app profiles and compare.
+
+    Both sides use the same scenario versions, adapter and trial count, so the
+    only variable is the application configuration. A comparison whose
+    denominators differ is not a comparison.
+    """
+    profiles = ("hardened", "vulnerable")
+    try:
+        scenarios = load_suite(suite)
+    except SchemaError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(EXIT_USAGE) from exc
+
+    base = _config(model, endpoint, remote_model, None, timeout, max_retries, "violation")
+    summaries: dict[str, RunSummary] = {}
+    everything: list[TrialResult] = []
+    for profile in profiles:
+        results = Runner(replace(base, app_profile=profile)).run_suite(scenarios)
+        everything.extend(results)
+        summaries[profile] = summarize(results, selected=len(scenarios))
+
+    if output is not None:
+        write_jsonl(everything, output)
+        if not quiet:
+            typer.echo(f"wrote {len(everything)} result(s) to {output}")
+    if not quiet:
+        _print_comparison(summaries)
+    raise typer.Exit(_exit_code(everything, "violation"))
+
+
+@app.command()
 def report(
     input: Annotated[Path, typer.Option("--input", "-i", help="JSONL results to read.")],
     output: Annotated[Path, typer.Option("--output", "-o", help="HTML file to write.")],
@@ -274,6 +318,33 @@ def _print_results(results: list[TrialResult], *, quiet: bool) -> None:
                 typer.echo(f"    {invariant.id}: {invariant.detail}")
         if result.error:
             typer.echo(f"    error: {result.error}")
+
+
+def _print_comparison(summaries: dict[str, RunSummary]) -> None:
+    profiles = list(summaries)
+    widths = [22] + [22] * len(profiles)
+    header = (
+        "metric".ljust(widths[0])
+        + "  "
+        + "  ".join(profile.ljust(widths[index + 1]) for index, profile in enumerate(profiles))
+    )
+    typer.echo(header)
+    rows = [
+        ("trials", lambda s: str(s.total_trials)),
+        ("violations", lambda s: str(s.violations)),
+        ("incomplete", lambda s: str(s.incomplete)),
+        ("ASR", lambda s: s.attack_success_rate.describe()),
+        ("denial rate", lambda s: s.denial_rate.describe()),
+        ("false positive rate", lambda s: s.false_positive_rate.describe()),
+    ]
+    for label, extract in rows:
+        cells = [extract(summaries[profile]) for profile in profiles]
+        line = (
+            label.ljust(widths[0])
+            + "  "
+            + "  ".join(cell.ljust(widths[index + 1]) for index, cell in enumerate(cells))
+        )
+        typer.echo(line)
 
 
 def _print_summary(summary) -> None:  # noqa: ANN001 - RunSummary, kept untyped for brevity

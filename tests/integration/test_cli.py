@@ -181,3 +181,23 @@ def test_trials_repeat_the_scenario(tmp_path: Path) -> None:
 def test_shipped_corpus_is_valid() -> None:
     result = invoke("validate", "scenarios")
     assert result.exit_code == EXIT_OK
+
+
+def test_compare_runs_both_profiles_and_exits_one(suite: Path, tmp_path: Path) -> None:
+    output = tmp_path / "comparison.jsonl"
+    result = invoke("compare", str(suite), "--output", str(output))
+    assert result.exit_code == EXIT_VIOLATION
+    assert "hardened" in result.stdout
+    assert "vulnerable" in result.stdout
+
+    payloads = [
+        json.loads(line) for line in output.read_text(encoding="utf-8").strip().splitlines()
+    ]
+    assert {p["app_profile"] for p in payloads} == {"hardened", "vulnerable"}
+    assert {p["scenario_id"] for p in payloads} == {"cli-attack", "cli-benign"}
+
+
+def test_compare_is_reproducible(suite: Path) -> None:
+    first = invoke("compare", str(suite))
+    second = invoke("compare", str(suite))
+    assert first.stdout == second.stdout
