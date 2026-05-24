@@ -1,0 +1,53 @@
+name: Bug report
+about: Something behaves differently from what the documentation says
+title: ""
+labels: bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report vulnerabilities in PromptFence here — use the private
+        channel in SECURITY.md.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you observe, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The exact command, and the scenario file if one is involved.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: PromptFence version
+      placeholder: uv run promptfence version
+    validations:
+      required: true
+
+  - type: dropdown
+    id: adapter
+    attributes:
+      label: Which adapter
+      options:
+        - mock (offline)
+        - openai_compatible
+        - not applicable
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output or results
+      description: Paste the CLI output, or the failing JSONL line with any key removed.
+      render: shell

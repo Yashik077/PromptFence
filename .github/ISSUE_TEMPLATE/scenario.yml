@@ -1,0 +1,59 @@
+name: Scenario proposal
+about: Suggest a security property worth testing
+title: ""
+labels: scenario
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Scenarios are the main way this project grows. Read
+        docs/scenario-authoring.md before filling this in.
+
+  - type: input
+    id: property
+    attributes:
+      label: Which security property?
+      placeholder: A principal cannot read a document owned by another principal
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - direct_injection
+        - indirect_injection
+        - unauthorized_tools
+        - data_isolation
+        - secret_exposure
+        - state_change
+        - benign
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: What evidence would count as a violation?
+      description: >
+        Be concrete. "The tool call was denied and no protected value appears in
+        the output" is an answer. "It seemed unsafe" is not.
+    validations:
+      required: true
+
+  - type: textarea
+    id: existing
+    attributes:
+      label: Why does the existing corpus not already cover this?
+    validations:
+      required: true
+
+  - type: textarea
+    id: sketch
+    attributes:
+      label: Sketch of the scenario
+      description: >
+        id, setup, input (including any untrusted_documents), invariants and
+        expected behaviour.
+      render: yaml
