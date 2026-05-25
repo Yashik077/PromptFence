@@ -112,8 +112,7 @@ def _status_table(summary: RunSummary) -> str:
     for status in STATUS_ORDER:
         count = summary.by_status.get(status.value, 0)
         rows.append(
-            f"<tr><td class=\"{status.value}\">{_esc(status.value)}</td>"
-            f"<td>{count}</td></tr>"
+            f'<tr><td class="{status.value}">{_esc(status.value)}</td><td>{count}</td></tr>'
         )
     body = "".join(rows)
     return f"<h2>Outcomes</h2><table><tr><th>Outcome</th><th>Trials</th></tr>{body}</table>"
@@ -132,12 +131,13 @@ def _findings(results: Sequence[TrialResult]) -> str:
         if result.error:
             detail = f"{detail}<br>{_esc(result.error)}" if detail else _esc(result.error)
         rows.append(
-            f"<tr><td class=\"{result.status.value}\">{_esc(result.status.value)}</td>"
+            f'<tr><td class="{result.status.value}">{_esc(result.status.value)}</td>'
             f"<td>{_esc(result.scenario_id)} v{result.scenario_version}<br>"
-            f"<span class=\"muted\">{_esc(result.trial_id)} &middot; {_esc(result.app_profile)}"
+            f'<span class="muted">{_esc(result.trial_id)} &middot; {_esc(result.app_profile)}'
             f"</span></td><td>{detail}</td></tr>"
         )
     if not rows:
-        return "<h2>Findings</h2><p class=\"muted\">No violations, errors or denials.</p>"
+        return '<h2>Findings</h2><p class="muted">No violations, errors or denials.</p>'
     body = "".join(rows)
-    return f"<h2>Findings</h2><table><tr><th>Outcome</th><th>Scenario</th><th>Evidence</th></tr>{body}</table>"
+    header = "<tr><th>Outcome</th><th>Scenario</th><th>Evidence</th></tr>"
+    return f"<h2>Findings</h2><table>{header}{body}</table>"
