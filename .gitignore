@@ -17,9 +17,10 @@ venv/
 .coverage
 htmlcov/
 
-# Local output
-results/
-reports/
+# Local output. Anchored to the repository root: an unanchored `reports/`
+# would swallow src/promptfence/reports/ as well, which it did.
+/results/
+/reports/
 *.jsonl
 !tests/fixtures/*.jsonl
 
